@@ -1,0 +1,7 @@
+TEAM_ID=
+
+PRODUCT_NAME=streaming_paging_demo
+PRODUCT_BUNDLE_IDENTIFIER=com.example.streaming_paging_demo.streaming_paging_demo$(TEAM_ID)
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=1.0
