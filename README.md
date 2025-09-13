@@ -97,3 +97,4 @@ See `ARTICLE.md` for full dependency snippets.
 ## Links
 
 - Article and flow diagram: see `ARTICLE.md`
+- StreamingPager library: [paging-kmp](https://github.com/White-Wind-LLC/paging-kmp)
