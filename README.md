@@ -1,90 +1,99 @@
-This is a Kotlin Multiplatform project targeting Android, iOS, Web, Desktop (JVM), Server.
+## Streaming Pagination Demo (Ktor SSE + StreamingPager)
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-    - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-    - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-      For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-      the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-      Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-      folder is the appropriate location.
+Real‑time pagination demo that keeps lists fresh without polling. The server streams updates via Server‑Sent Events (
+SSE) and the client maintains an always‑up‑to‑date paged list using `StreamingPager` from `ua.wwind.paging:paging-core`.
 
-* [/iosApp](./iosApp/iosApp) contains iOS applications. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+### What this shows
 
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
+- **SSE‑driven pagination**: server pushes total count and page windows as data changes
+- **Always‑fresh UI**: `StreamingPager` merges total/page streams and updates visible rows automatically
+- **Resilience**: transparent restaging on expired filter IDs (403) and reconnection handling
+- **Kotlin Multiplatform**: shared client logic for Android, iOS, Desktop (JVM), and Web
 
-* [/shared](./shared/src) is for the code that will be shared between all targets in the project.
-  The most important subfolder is [commonMain](./shared/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
+Read the full write‑up with a flow diagram in `ARTICLE.md`.
 
-### Build and Run Android Application
+### How it works (high level)
 
-To build and run the development version of the Android app, use the run configuration from the run widget
-in your IDE’s toolbar or build it directly from the terminal:
+1) Client stages current filters: `POST /orders/sse` → `requestId`
+2) Client opens two SSE streams with header `X-SSE-Request-ID`:
+    - `GET /orders/sse/count` → streams total item count
+    - `GET /orders/sse?position=X&size=Y` → streams current page as `{ index -> item }`
+3) On DB changes, the server re‑queries and pushes fresh count/page
+4) Client’s `StreamingPager` merges these flows into `PagingData` and updates the UI
 
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:assembleDebug
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:assembleDebug
-  ```
-
-### Build and Run Desktop (JVM) Application
-
-To build and run the development version of the desktop app, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:run
-  ```
-
-### Build and Run Server
-
-To build and run the development version of the server, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-
-- on macOS/Linux
-  ```shell
-  ./gradlew :server:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :server:run
-  ```
-
-### Build and Run Web Application
-
-To build and run the development version of the web app, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
-  ```
-
-### Build and Run iOS Application
-
-To build and run the development version of the iOS app, use the run configuration from the run widget
-in your IDE’s toolbar or open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+Production note: use an external store for staged filters (e.g., Redis) rather than in‑memory cache to survive restarts
+and scale horizontally.
 
 ---
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
+## Project structure
 
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack
-channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).
+- `server/` — Ktor server with SSE endpoints and in‑memory H2 DB
+- `shared/` — shared Kotlin Multiplatform code (domain, networking, repo with `StreamingPager`)
+- `composeApp/` — Compose Multiplatform UI (Android/Desktop/Web targets)
+- `iosApp/` — iOS entry point (Xcode project)
+
+---
+
+## Quick start
+
+Open two terminals.
+
+- Start the server
+
+```bash
+./gradlew :server:run
+```
+
+- Run the UI (pick one target)
+    - Desktop (JVM)
+  ```bash
+  ./gradlew :composeApp:run
+  ```
+    - Android (assemble debug)
+  ```bash
+  ./gradlew :composeApp:assembleDebug
+  ```
+    - Web (Wasm)
+  ```bash
+  ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+  ```
+    - iOS: open `iosApp/` in Xcode and run
+
+Then open the Orders screen and watch the list update as the server inserts random orders.
+
+---
+
+## API endpoints (server)
+
+- `POST /orders/sse` — stage current filters, returns `requestId`
+- `GET /orders/sse/count` — SSE stream of total count; requires header `X-SSE-Request-ID: <id>`
+- `GET /orders/sse?position=<pos>&size=<size>` — SSE stream of a page window as JSON map `{ index -> item }`; requires
+  header `X-SSE-Request-ID`
+
+Response semantics:
+
+- If `requestId` is missing/expired, the server responds `403` and the client should restage filters and reopen streams
+
+---
+
+## Key dependencies
+
+- `ua.wwind.paging:paging-core:2.2.1` — StreamingPager core
+- Ktor 3.3.x — server, client, SSE, and JSON serialization
+
+See `ARTICLE.md` for full dependency snippets.
+
+---
+
+## Notes for production
+
+- Store staged filters in Redis or a DB table (not in‑memory) to survive restarts and enable horizontal scaling
+- Authenticate the staging endpoint and validate ownership of `requestId`
+- Keep SSE handlers lightweight; offload heavy work to background jobs
+
+---
+
+## Links
+
+- Article and flow diagram: see `ARTICLE.md`
