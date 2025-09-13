@@ -12,8 +12,20 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.*
 
 fun main() {
-    embeddedServer(Netty, port = SERVER_PORT, host = "0.0.0.0", module = Application::module)
-        .start(wait = true)
+    embeddedServer(
+        Netty,
+        configure = {
+            connectors.add(EngineConnectorBuilder().apply {
+                host = "0.0.0.0"
+                port = SERVER_PORT
+            })
+            // Disable write timeouts to allow long‑lived SSE responses without server-side timeouts
+            responseWriteTimeoutSeconds = 0
+            // Also disable request read timeout just in case (noop for SSE GET, but safe)
+            requestReadTimeoutSeconds = 0
+        },
+        module = Application::module
+    ).start(wait = true)
 }
 
 fun Application.module() {

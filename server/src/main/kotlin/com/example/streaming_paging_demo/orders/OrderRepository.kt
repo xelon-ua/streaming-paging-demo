@@ -105,6 +105,7 @@ class OrderRepository {
                     statuses.map { status -> Triple(customer, address, status) }
                 }
             }.shuffled()
+                .take(100)
 
             combinations.forEachIndexed { index, (customer, address, status) ->
                 val id = index + 1L
